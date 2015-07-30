@@ -9,15 +9,17 @@ Server::Server(int server_id, std::string ip, int port, int protocol, AMX *amx)
 	this->m_amx = amx;
 }
 
-#ifdef _WIN32
 void Server::client_thread(int clientid, SOCKET sock)
-#endif
 {
 	int res = 0;
 	char buffer[2048];
 
 	do {
+#ifdef _WIN32
 		res = recv(sock, buffer, MAX_RECV_BUFFER, 0);
+#else
+        res = read(sock, buffer, MAX_RECV_BUFFER);
+#endif
 		if (res > 0)
 		{
 			for (auto &i : this->clients)
@@ -190,15 +192,91 @@ void Server::start()
 			}
 		}
 	}
+#else
+    struct sockaddr_in serv_addr, client_addr;
+    this->srv_socket = socket(AF_INET, SOCK_STREAM, 0);
+    int client_socket;
+    std::string errstr;
+
+    if (this->srv_socket < 0)
+    {
+        throw new SocketServerCreationFailed(this->srv_socket);
+    }
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+
+    // fill data
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    serv_addr.sin_port = htons(port);
+
+    // bind socket
+    int binderr = bind(this->srv_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+    if (binderr < 0)
+    {
+        throw new SocketServerBindFailed(binderr);
+    }
+
+    // listen on socket
+    listen(this->srv_socket, 5);
+
+    unsigned int size = sizeof(client_addr);
+    while (client_socket = accept(this->srv_socket, (struct sockaddr *)&client_addr, &size))
+    {
+        if (client_socket == INVALID_SOCKET)
+        {
+            errstr = "Could not accept a new client!";
+            this->send_server_error(SERVER_ERROR_ACCEPT_ERROR, errstr);
+        }
+        else
+        {
+			int clientid = this->get_free_client_id();
+			if (clientid == -1)
+			{
+				errstr = "A new client tried to connect but client limit is reached!";
+				this->send_server_error(SERVER_ERROR_CLIENT_LIMIT_REACHED, errstr);
+
+				close(client_socket);
+			}
+			else
+			{
+				client_ids.push_back(clientid);
+
+				std::thread cThread(&Server::client_thread, this, clientid, client_socket);
+				cThread.detach();
+				
+				this->clients.push_back({ clientid, cThread, 0, 0, client_socket });
+
+				cell idx;
+
+				if (!amx_FindPublic(this->m_amx, "OnSocketClientConnect", &idx))
+				{
+					cell addr;
+
+					char *ip = inet_ntoa(client_addr.sin_addr);
+					uint16_t rem_port = ntohs(client_addr.sin_port);
+
+					amx_Push(this->m_amx, rem_port);
+					amx_PushString(this->m_amx, &addr, NULL, ip, NULL, NULL);
+					amx_Push(this->m_amx, clientid);
+					amx_Push(this->m_amx, this->server_id);
+
+					amx_Exec(this->m_amx, NULL, idx);
+				}
+			}
+        }
+    }
 #endif
 }
 
-void Server::close()
+void Server::shutdown()
 {
 #ifdef _WIN32
 	closesocket(this->srv_socket);
-	this->srv_socket = INVALID_SOCKET;
+#else
+    close(this->srv_socket);
 #endif
+    this->srv_socket = INVALID_SOCKET;
 }
 
 int Server::get_free_client_id()
@@ -293,7 +371,11 @@ void Server::socket_send_thread(int client_id, std::string text)
 			}
 		}
 
+#ifdef _WIN32
 		send(clients[client_id].sock, text.c_str(), text.length(), 0);
+#else
+        write(clients[client_id].sock, text.c_str(), text.length());
+#endif
 	}
 }
 

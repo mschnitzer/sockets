@@ -8,11 +8,25 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#else
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <string.h>
 #endif
 #include "Exceptions.h"
 #include "settings.h"
 #include "amx/amx.h"
 #include "ServerErrors.h"
+
+#ifndef _WIN32
+typedef int SOCKET;
+#define INVALID_SOCKET 1
+#endif
 
 class Server {
 private:
@@ -31,20 +45,16 @@ public:
 		std::thread &cthread;
 		int bytesSent;
 		int bytesRecevied;
-#ifdef _WIN32
 		SOCKET sock;
-#endif
 	};
 
 	std::vector<Server::s_Clients> clients;
 	std::vector<int> client_ids;
 
 	Server(int server_id, std::string ip, int port, int protocol, AMX *amx);
-#ifdef _WIN32
 	void client_thread(int clientid, SOCKET sock);
-#endif
 	void start();
-	void close();
+	void shutdown();
 	int get_free_client_id();
 	void send_server_error(int error, std::string errstr);
 	void server_initialized();

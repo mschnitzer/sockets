@@ -72,7 +72,7 @@ void new_server(int server_id, std::string ip, int port, int protocol)
 
 	if (error_s.length() > 0)
 	{
-		logprintf("* sockets [ERROR]: %s", error_s);
+		logprintf("* sockets [ERROR]: %s", error_s.c_str());
 
 		cell idx;
 
