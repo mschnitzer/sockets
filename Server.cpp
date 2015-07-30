@@ -75,7 +75,17 @@ void Server::start()
 	struct addrinfo hints;
 
 	int error = -1;
+#else
+	struct sockaddr_in serv_addr, client_info;
+	this->srv_socket = socket(AF_INET, SOCK_STREAM, 0);
+	int client_socket;
+	std::string errstr;
+#endif
 
+	//////////////////////////////////////////////////////////////////////////
+	// Server Initialization
+	//////////////////////////////////////////////////////////////////////////
+#ifdef _WIN32
 	// init
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (iResult != 0)
@@ -85,12 +95,11 @@ void Server::start()
 
 	ZeroMemory(&hints, sizeof(hints));
 
+	// fill data
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
 	hints.ai_flags = AI_PASSIVE;
-	
-	std::string errstr;
 
 	// resolve host
 	char szPort[5] = { 0 };
@@ -110,7 +119,7 @@ void Server::start()
 		error = WSAGetLastError();
 		freeaddrinfo(result);
 		WSACleanup();
-		
+
 		throw new SocketServerCreationFailed(error);
 	}
 
@@ -139,30 +148,56 @@ void Server::start()
 		throw new SocketServerListenFailed(error);
 	}
 
-	// server initialized
-	this->server_initialized();
-
 	SOCKADDR_IN client_info = { 0 };
 	int addrsize = sizeof(client_info);
-	
-	// Accept a client socket
-	while (client_socket = accept(srv_socket, (struct sockaddr*)&client_info, &addrsize))
+#else
+	if (this->srv_socket < 0)
+	{
+		throw new SocketServerCreationFailed(this->srv_socket);
+	}
+
+	bzero((char *)&serv_addr, sizeof(serv_addr));
+
+	// fill data
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_addr.s_addr = INADDR_ANY;
+	serv_addr.sin_port = htons(port);
+
+	// bind socket
+	int binderr = bind(this->srv_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+	if (binderr < 0)
+	{
+		throw new SocketServerBindFailed(binderr);
+	}
+
+	// listen on socket
+	listen(this->srv_socket, 5);
+
+	unsigned int addrsize = sizeof(client_info);
+#endif
+
+	// server initialized callback
+	this->server_initialized();
+
+	// handle client connection requests
+	while (client_socket = accept(this->srv_socket, (struct sockaddr *)&client_info, &addrsize))
 	{
 		if (client_socket == INVALID_SOCKET)
 		{
-			errstr = "Could not accept a new client!";
-			this->send_server_error(SERVER_ERROR_ACCEPT_ERROR, errstr);
+			this->send_server_error(SERVER_ERROR_ACCEPT_ERROR, "Could not accept a new client!");
 		}
 		else
 		{
 			int clientid = this->get_free_client_id();
 			if (clientid == -1)
 			{
-				errstr = "A new client tried to connect but client limit is reached!";
-				this->send_server_error(SERVER_ERROR_CLIENT_LIMIT_REACHED, errstr);
+				this->send_server_error(SERVER_ERROR_CLIENT_LIMIT_REACHED, "A new client tried to connect but client limit is reached!");
 
+#ifdef _WIN32
 				closesocket(client_socket);
-				client_socket = INVALID_SOCKET;
+#else
+				close(client_socket);
+#endif
 			}
 			else
 			{
@@ -192,81 +227,6 @@ void Server::start()
 			}
 		}
 	}
-#else
-    struct sockaddr_in serv_addr, client_addr;
-    this->srv_socket = socket(AF_INET, SOCK_STREAM, 0);
-    int client_socket;
-    std::string errstr;
-
-    if (this->srv_socket < 0)
-    {
-        throw new SocketServerCreationFailed(this->srv_socket);
-    }
-
-    bzero((char *)&serv_addr, sizeof(serv_addr));
-
-    // fill data
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(port);
-
-    // bind socket
-    int binderr = bind(this->srv_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    if (binderr < 0)
-    {
-        throw new SocketServerBindFailed(binderr);
-    }
-
-    // listen on socket
-    listen(this->srv_socket, 5);
-
-    unsigned int size = sizeof(client_addr);
-    while (client_socket = accept(this->srv_socket, (struct sockaddr *)&client_addr, &size))
-    {
-        if (client_socket == INVALID_SOCKET)
-        {
-            errstr = "Could not accept a new client!";
-            this->send_server_error(SERVER_ERROR_ACCEPT_ERROR, errstr);
-        }
-        else
-        {
-			int clientid = this->get_free_client_id();
-			if (clientid == -1)
-			{
-				errstr = "A new client tried to connect but client limit is reached!";
-				this->send_server_error(SERVER_ERROR_CLIENT_LIMIT_REACHED, errstr);
-
-				close(client_socket);
-			}
-			else
-			{
-				client_ids.push_back(clientid);
-
-				std::thread cThread(&Server::client_thread, this, clientid, client_socket);
-				cThread.detach();
-				
-				this->clients.push_back({ clientid, cThread, 0, 0, client_socket });
-
-				cell idx;
-
-				if (!amx_FindPublic(this->m_amx, "OnSocketClientConnect", &idx))
-				{
-					cell addr;
-
-					char *ip = inet_ntoa(client_addr.sin_addr);
-					uint16_t rem_port = ntohs(client_addr.sin_port);
-
-					amx_Push(this->m_amx, rem_port);
-					amx_PushString(this->m_amx, &addr, NULL, ip, NULL, NULL);
-					amx_Push(this->m_amx, clientid);
-					amx_Push(this->m_amx, this->server_id);
-
-					amx_Exec(this->m_amx, NULL, idx);
-				}
-			}
-        }
-    }
-#endif
 }
 
 void Server::shutdown()
