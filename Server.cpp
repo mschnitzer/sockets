@@ -16,6 +16,7 @@ void Server::client_thread(int clientid, SOCKET sock)
 {
 	int res = 0;
 	char buffer[2048];
+	bool first = true;
 
 	do {
 		res = recv(sock, buffer, MAX_RECV_BUFFER, 0);
@@ -170,7 +171,7 @@ void Server::start()
 				std::thread cThread(&Server::client_thread, this, clientid, client_socket);
 				cThread.detach();
 				
-				this->clients.push_back({ clientid, cThread, client_socket });
+				this->clients.push_back({ clientid, cThread, 0, 0, client_socket });
 
 				cell idx;
 
@@ -250,4 +251,61 @@ void Server::server_initialized()
 void Server::set_max_clients(int max_clients)
 {
 	this->max_clients = max_clients;
+}
+
+bool Server::is_client_connected(int client_id)
+{
+	if (std::find(this->client_ids.begin(), this->client_ids.end(), client_id) != this->client_ids.end())
+	{
+		return true;
+	}
+
+	return false;
+}
+
+int Server::get_sent_client_bytes(int client_id)
+{
+	if (this->is_client_connected(client_id) == false)
+	{
+		return -1;
+	}
+
+	return this->clients[client_id].bytesSent;
+}
+
+int Server::get_received_client_bytes(int client_id)
+{
+	if (this->is_client_connected(client_id) == false)
+	{
+		return -1;
+	}
+
+	return this->clients[client_id].bytesRecevied;
+}
+
+void Server::socket_send_thread(int client_id, std::string text)
+{
+	if (this->is_client_connected(client_id) == true)
+	{
+		for (auto &i : this->clients)
+		{
+			if (i.clientid == client_id)
+			{
+				i.bytesRecevied += text.length();
+			}
+		}
+
+		send(clients[client_id].sock, text.c_str(), text.length(), 0);
+	}
+}
+
+int Server::socket_send(int client_id, std::string text)
+{
+	if (this->is_client_connected(client_id) == false)
+	{
+		return 0;
+	}
+
+	std::thread(&Server::socket_send_thread, this, client_id, text).detach();
+	return 1;
 }

@@ -23,6 +23,21 @@ extern void *pAMXFunctions;
 
 AMX *m_amx;
 
+bool is_server_used(int server_id)
+{
+	if (server_id < 0 || server_id >(MAX_SERVERS - 1))
+	{
+		return 0;
+	}
+
+	if (servers[server_id].isUsed == false)
+	{
+		return 0;
+	}
+
+	return 1;
+}
+
 void new_server(int server_id, std::string ip, int port, int protocol)
 {
 	int error = -1;
@@ -129,18 +144,59 @@ cell AMX_NATIVE_CALL socket_server_set_maxclients(AMX* amx, cell* params)
 	if (max_clients < 0) max_clients = 1;
 	if (max_clients > 10000) max_clients = 10000;
 
-	if (server_id < 0 || server_id > (MAX_SERVERS - 1))
-	{
-		return 0;
-	}
-
-	if (servers[server_id].isUsed == false)
+	if (is_server_used(server_id) == false)
 	{
 		return 0;
 	}
 
 	servers[server_id].sobject->set_max_clients(max_clients);
 
+	return 1;
+}
+
+cell AMX_NATIVE_CALL socket_get_client_info(AMX* amx, cell* params)
+{
+	int server_id = params[1];
+	int client_id = params[2];
+
+	if (is_server_used(server_id) == false)
+	{
+		return 0;
+	}
+
+	if (servers[server_id].sobject->is_client_connected(client_id) == false)
+	{
+		return 0;
+	}
+
+	cell *addr[2] = { NULL, NULL };
+
+	amx_GetAddr(amx, params[3], &addr[0]); // bytes sent
+	amx_GetAddr(amx, params[4], &addr[1]); // bytes received
+
+	*addr[0] = servers[server_id].sobject->get_sent_client_bytes(client_id);
+	*addr[1] = servers[server_id].sobject->get_received_client_bytes(client_id);
+
+	return 1;
+}
+
+cell AMX_NATIVE_CALL socket_send(AMX* amx, cell* params)
+{
+	int server_id = params[1];
+	int client_id = params[2];
+	std::string text = AmxUtils::amx_GetStdString(amx, &params[3]);
+
+	if (is_server_used(server_id) == false)
+	{
+		return 0;
+	}
+
+	if (servers[server_id].sobject->is_client_connected(client_id) == false)
+	{
+		return 0;
+	}
+
+	servers[server_id].sobject->socket_send(client_id, text);
 	return 1;
 }
 
@@ -172,6 +228,8 @@ extern "C" const AMX_NATIVE_INFO PluginNatives[] =
 {
 	{ "socket_server_start", socket_server_start },
 	{ "socket_server_set_maxclients", socket_server_set_maxclients },
+	{ "socket_get_client_info", socket_get_client_info },
+	{ "socket_send", socket_send },
 	{ 0, 0 }
 };
 

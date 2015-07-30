@@ -49,6 +49,11 @@ public:
 	void send_server_error(int error, std::string errstr);
 	void server_initialized();
 	void set_max_clients(int max_clients);
+	bool is_client_connected(int client_id);
+	int get_sent_client_bytes(int client_id);
+	int get_received_client_bytes(int client_id);
+	void socket_send_thread(int client_id, std::string text);
+	int socket_send(int client_id, std::string text);
 };
 
 struct s_ServerList
