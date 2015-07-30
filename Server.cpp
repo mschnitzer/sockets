@@ -16,7 +16,6 @@ void Server::client_thread(int clientid, SOCKET sock)
 {
 	int res = 0;
 	char buffer[2048];
-	bool first = true;
 
 	do {
 		res = recv(sock, buffer, MAX_RECV_BUFFER, 0);
