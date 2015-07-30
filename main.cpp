@@ -90,19 +90,7 @@ void new_server(int server_id, std::string ip, int port, int protocol)
 
 cell AMX_NATIVE_CALL socket_server_start(AMX* amx, cell* params)
 {
-	//std::string ip = AmxUtils::amx_GetStdString(amx, &params[1]); - does currently not work for some reason?!
-	cell *addr = NULL;
-	int len = 0;
-
-	amx_GetAddr(amx, params[1], &addr);
-	amx_StrLen(addr, &len);
-	len++;
-
-	char *str = new char[len];
-	amx_GetString(str, addr, 0, len);
-
-	std::string ip = std::string(str);
-	delete[] str;
+	std::string ip = AmxUtils::amx_GetStdString(amx, &params[1]);
 	int port = params[2];
 	int protocol = params[3];
 
