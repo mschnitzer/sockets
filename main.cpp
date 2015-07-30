@@ -200,6 +200,19 @@ cell AMX_NATIVE_CALL socket_send(AMX* amx, cell* params)
 	return 1;
 }
 
+cell AMX_NATIVE_CALL socket_is_client_connected(AMX* amx, cell* params)
+{
+	int server_id = params[1];
+	int client_id = params[2];
+
+	if (is_server_used(server_id) == false)
+	{
+		return 0;
+	}
+
+	return servers[server_id].sobject->is_client_connected(client_id);
+}
+
 PLUGIN_EXPORT unsigned int PLUGIN_CALL Supports()
 {
 	return SUPPORTS_VERSION | SUPPORTS_AMX_NATIVES;
@@ -230,6 +243,7 @@ extern "C" const AMX_NATIVE_INFO PluginNatives[] =
 	{ "socket_server_set_maxclients", socket_server_set_maxclients },
 	{ "socket_get_client_info", socket_get_client_info },
 	{ "socket_send", socket_send },
+	{ "socket_is_client_connected", socket_is_client_connected },
 	{ 0, 0 }
 };
 
