@@ -1,5 +1,4 @@
 #include "Server.h"
-#include <iostream>
 
 Server::Server(int server_id, std::string ip, int port, int protocol, AMX *amx)
 {
